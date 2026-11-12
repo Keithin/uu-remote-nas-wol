@@ -1,0 +1,6 @@
+/source/
+/output/
+/config/
+/data/
+.env
+*.log

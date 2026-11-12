@@ -1,0 +1,53 @@
+services:
+  builder:
+    profiles: [build]
+    image: ubuntu:24.04
+    platform: linux/amd64
+    working_dir: /source
+    environment:
+      UU_NO_GTK: "1"
+      CARGO_BUILD_JOBS: "2"
+    volumes:
+      - ./source:/source
+      - ./output:/output
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        apt-get -o Acquire::Retries=2 update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates build-essential pkg-config libx11-dev libxext-dev libxtst-dev libxfixes-dev cargo-1.91
+        export PATH="/usr/lib/rust-1.91/bin:$$PATH"
+        cargo test --release --locked --bin uuremote-server wol::tests
+        cargo build --release --locked --bin uuremote-server
+        install -m 755 target/release/uuremote-server /output/uuremote-server
+        sha256sum /output/uuremote-server
+
+  uu-wol:
+    image: ubuntu:24.04
+    platform: linux/amd64
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      UU_CONFIG: /config/config.json
+      UU_DESKTOP_BACKEND: none
+      UU_LOGIN_WINDOW: "0"
+      UU_AUDIO: "0"
+      UU_WOL_HELPER: "1"
+      HOME: /data
+    volumes:
+      - ./output:/opt/uu:ro
+      - ./config:/config
+      - ./data:/data
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        umask 077
+        apt-get -o Acquire::Retries=2 update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libx11-6 libxext6 libxtst6 libxfixes3
+        if [ "$$#" -gt 0 ]; then
+          exec /opt/uu/uuremote-server "$$@"
+        fi
+        test -s /config/config.json
+        exec /opt/uu/uuremote-server
+      - uu-wol
