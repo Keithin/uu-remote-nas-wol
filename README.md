@@ -82,4 +82,12 @@ systemctl show docker.service -p DropInPaths -p RequiresMountsFor
 
 `docker compose stop uu-wol` 可停止服务，`docker compose down` 可移除该项目的容器。将 `config/` 私下保存可保留登录配置。
 
-本仓库使用 GPL-3.0。网易 UU 远程和极空间是各自厂商的产品。本方案使用社区客户端，其兼容性取决于网易服务和目标网络。 [上游 NAS 部署文档](https://github.com/VallierDev/uu-remote-linux/blob/fe052cdca7ad90d1ab7c27d031036b1071869070/docs/deploy-nas-docker.md)
+## 致谢
+
+感谢 `uu-remote-linux` 的维护者和贡献者提供 Linux 无桌面客户端、NAS Docker 部署文档，以及辅助开机设备的注册修复。本仓库基于这些工作整理了 NAS 部署和实机验收步骤。 [上游项目](https://github.com/VallierDev/uu-remote-linux) · [上游 NAS 部署文档](https://github.com/VallierDev/uu-remote-linux/blob/fe052cdca7ad90d1ab7c27d031036b1071869070/docs/deploy-nas-docker.md) · [注册修复 PR](https://github.com/VallierDev/uu-remote-linux/pull/209)
+
+## 免责声明
+
+本仓库是独立的社区项目，未经网易官方授权或背书，与网易公司及网易 UU 远程团队无隶属或合作关系。文中使用「网易」和「UU 远程」仅用于指称相关产品，相关商标归各自权利人所有。
+
+本仓库按 GPL-3.0 提供。辅助开机依赖网易 UU 远程服务、上游客户端和本地网络环境。网易服务或客户端更新可能影响兼容性，本项目不保证持续可用。
