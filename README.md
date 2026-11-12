@@ -43,12 +43,42 @@ docker compose ps
 
 容器以宿主网络运行，以便读取真实局域网接口并发送广播。启动时会检查和安装运行依赖。Docker 引擎需要能在 NAS 开机后自行启动，容器的重启策略才会生效。
 
+## 极空间 Z4 开机自启
+
+开机时先等存储池挂载，确认 Docker 数据目录以及 UU 容器的程序和登录配置可读，再启动 Docker 引擎。Compose 已为 `uu-wol` 设置 `restart: unless-stopped`，引擎启动后会恢复之前在运行的容器。如果曾手动停止该容器，请先用 `docker compose up -d uu-wol` 恢复运行。
+
+如果 Z4 已有可用的引擎自启流程，直接按下文复测即可。如果你的固件使用 systemd 管理 Docker，且需要补上开机启动，可以参考下面的配置。先用 `sudo systemctl cat docker.service` 确认服务名，用 `sudo docker info --format '{{.DockerRootDir}}'` 查 Docker 数据目录，并用 `findmnt -T <目录>` 分别确认数据目录和 Compose 挂载目录所在的真实挂载点。
+
+用 `sudo systemctl edit docker.service` 添加 drop-in。以下路径都是占位符，必须换成你自己的路径。若几个目录位于同一挂载点，按实际情况填写。
+
+```ini
+[Unit]
+RequiresMountsFor=/mnt/docker-pool /mnt/uu-pool
+
+[Service]
+ExecStartPre=/bin/sh -ec 'for attempt in $(seq 1 60); do if mountpoint -q /mnt/docker-pool && mountpoint -q /mnt/uu-pool && test -d /mnt/docker-pool/docker/containers && test -x /mnt/uu-pool/uu-wol/output/uuremote-server && test -s /mnt/uu-pool/uu-wol/config/config.json; then exit 0; fi; sleep 5; done; echo "Docker storage paths are not ready" >&2; exit 1'
+```
+
+`RequiresMountsFor` 声明挂载依赖，启动前检查再确认预期目录和文件确实可用。示例最多等待约 5 分钟，超时会让这次 Docker 启动失败，避免在存储未就绪时继续启动。这个 drop-in 作用于整个 Docker 引擎，其他容器也会一起等待。如果 UU 的路径经由 ZOS 的挂载映射访问，检查路径应使用 Compose 实际绑定的目录。
+
+```sh
+sudo systemd-analyze verify docker.service
+sudo systemctl daemon-reload
+sudo systemctl enable docker.service
+systemctl is-enabled docker.service
+systemctl show docker.service -p DropInPaths -p RequiresMountsFor
+```
+
+这些命令设置并读回自启配置，无需立即重启引擎。ZOS 可能另有引擎启动流程，重启后的引擎状态和唤醒实测应一起检查。
+
 ## 验收
 
 1. 查看 `docker compose logs uu-wol`，确认客户端上线且 `WOL helper: LAN info reported` 返回 HTTP 200、业务码 0。
 2. 在官方 UU 远程中确认 NAS 可作为目标电脑的辅助开机设备。
 3. 保存工作并正常关机。从局域网外在官方 App 点击目标电脑的「远程开机」。确认日志出现 `wake_on_lan` 和 `magic packet sent`，并实际连上已启动的电脑。
-4. 重启容器后再试一次，验证原绑定仍可用。若要确认 NAS 开机自启，等一次计划内重启后再重复验收。
+4. 在 NAS 计划内重启前确认 `uu-wol` 正在运行。NAS 开机后，先别手动启动或重启 Docker，运行 `systemctl is-active docker.service` 和 `docker compose ps uu-wol`，确认引擎已启动、容器已恢复。若使用上面的自启配置，同时读回 `systemctl is-enabled docker.service` 和 drop-in。
+5. 确认容器沿用原来的扫码绑定并成功上报局域网信息。让目标 Windows 电脑正常关机，再从局域网外用官方 UU App 点击「远程开机」。看到 NAS 收到指令、发出唤醒包，并实际连上开机后的电脑，才算重启后验收通过。
+6. 如果引擎没起来，先看 `sudo journalctl -b -u docker.service --no-pager` 和存储挂载状态。如果引擎已运行但容器没恢复，检查 `docker compose ps -a uu-wol`、容器重启策略和 `docker compose logs uu-wol`。
 
 `docker compose stop uu-wol` 可停止服务，`docker compose down` 可移除该项目的容器。将 `config/` 私下保存可保留登录配置。
 
