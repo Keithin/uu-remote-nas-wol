@@ -1,0 +1,31 @@
+name: Publish GHCR image
+on:
+  push:
+    branches: [main]
+    paths: [Dockerfile, .dockerignore, .github/workflows/image.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: ghcr-main
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    env:
+      IMAGE: ghcr.io/keithin/uu-remote-nas-wol
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$IMAGE:$GITHUB_SHA" .
+          docker run --rm --network none "$IMAGE:$GITHUB_SHA" --help
+      - name: Publish image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker tag "$IMAGE:$GITHUB_SHA" "$IMAGE:latest"
+          docker push "$IMAGE:latest"
