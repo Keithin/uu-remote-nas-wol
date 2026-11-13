@@ -18,10 +18,37 @@
 
 - x86_64 NAS，已启用 Docker Engine 与 Compose。
 - NAS 和目标 Windows 电脑处在同一局域网。目标电脑已启用 WoL，关机后网卡仍可接收唤醒包。
-- NAS 能访问 Docker 镜像仓库、Ubuntu 软件源、crates.io 和网易服务。
+- NAS 能访问 GHCR 和网易服务。从源码构建时还需要访问 Ubuntu 软件源和 crates.io。
 - [uu-remote-linux](https://github.com/VallierDev/uu-remote-linux) 是第三方客户端。无桌面模式仍包含终端、文件传输及端口映射能力。请只挂载本项目专用目录，保管好扫码二维码和 `config/` 中的登录信息。
 
-## 部署
+## 从 GHCR 拉取部署
+
+在 NAS 上新建一个部署目录，并在该目录保存以下内容为 `compose.yaml`。镜像面向 `linux/amd64`，编译和依赖安装已在镜像构建时完成。
+
+```yaml
+services:
+  uu-wol:
+    image: ghcr.io/keithin/uu-remote-nas-wol:latest
+    platform: linux/amd64
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./config:/config
+      - ./data:/data
+```
+
+```sh
+mkdir -p data
+mkdir -m 700 -p config
+docker compose pull
+docker compose run --rm uu-wol login --no-gui
+docker compose up -d
+docker compose ps
+```
+
+首次运行时，用官方 UU 远程 App 扫描终端里的二维码。已有部署可沿用原来的 `config/` 和 `data/`，并跳过扫码。升级时执行 `docker compose pull && docker compose up -d`。
+
+## 从源码构建
 
 在具备 Docker 权限的 NAS 终端执行。克隆本仓库后，进入仓库目录，再执行：
 
@@ -45,7 +72,7 @@ docker compose ps
 
 ## 极空间 Z4 开机自启
 
-开机时先等存储池挂载，确认 Docker 数据目录以及 UU 容器的程序和登录配置可读，再启动 Docker 引擎。Compose 已为 `uu-wol` 设置 `restart: unless-stopped`，引擎启动后会恢复之前在运行的容器。如果曾手动停止该容器，请先用 `docker compose up -d uu-wol` 恢复运行。
+开机时先等存储池挂载，确认 Docker 数据目录以及 UU 容器的登录配置可读，再启动 Docker 引擎。Compose 已为 `uu-wol` 设置 `restart: unless-stopped`，引擎启动后会恢复之前在运行的容器。如果曾手动停止该容器，请先用 `docker compose up -d uu-wol` 恢复运行。
 
 如果 Z4 已有可用的引擎自启流程，直接按下文复测即可。如果你的固件使用 systemd 管理 Docker，且需要补上开机启动，可以参考下面的配置。先用 `sudo systemctl cat docker.service` 确认服务名，用 `sudo docker info --format '{{.DockerRootDir}}'` 查 Docker 数据目录，并用 `findmnt -T <目录>` 分别确认数据目录和 Compose 挂载目录所在的真实挂载点。
 
@@ -56,7 +83,7 @@ docker compose ps
 RequiresMountsFor=/mnt/docker-pool /mnt/uu-pool
 
 [Service]
-ExecStartPre=/bin/sh -ec 'for attempt in $(seq 1 60); do if mountpoint -q /mnt/docker-pool && mountpoint -q /mnt/uu-pool && test -d /mnt/docker-pool/docker/containers && test -x /mnt/uu-pool/uu-wol/output/uuremote-server && test -s /mnt/uu-pool/uu-wol/config/config.json; then exit 0; fi; sleep 5; done; echo "Docker storage paths are not ready" >&2; exit 1'
+ExecStartPre=/bin/sh -ec 'for attempt in $(seq 1 60); do if mountpoint -q /mnt/docker-pool && mountpoint -q /mnt/uu-pool && test -d /mnt/docker-pool/docker/containers && test -s /mnt/uu-pool/uu-wol/config/config.json; then exit 0; fi; sleep 5; done; echo "Docker storage paths are not ready" >&2; exit 1'
 ```
 
 `RequiresMountsFor` 声明挂载依赖，启动前检查再确认预期目录和文件确实可用。示例最多等待约 5 分钟，超时会让这次 Docker 启动失败，避免在存储未就绪时继续启动。这个 drop-in 作用于整个 Docker 引擎，其他容器也会一起等待。如果 UU 的路径经由 ZOS 的挂载映射访问，检查路径应使用 Compose 实际绑定的目录。
